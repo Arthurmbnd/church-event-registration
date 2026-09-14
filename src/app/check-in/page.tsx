@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -748,6 +749,13 @@ export default function CheckInPage() {
                   <p className="mt-1 text-xs font-medium text-slate-400">
                     Try another name or registration number.
                   </p>
+
+                  <Link
+                    href="/register"
+                    className="mt-4 inline-flex items-center justify-center rounded-xl bg-fuchsia-600 px-4 py-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-fuchsia-700 active:scale-[0.98]"
+                  >
+                    Register new attendee
+                  </Link>
                 </div>
               )}
 
@@ -1034,3 +1042,4 @@ export default function CheckInPage() {
     </main>
   );
 }
+
