@@ -53,6 +53,7 @@ type ReportAttendee = {
   day_3: string | null;
   day_4: string | null;
   day_5: string | null;
+  day_6: string | null;
   days_attended: number;
   attendance_percentage: number;
 };
@@ -72,6 +73,7 @@ type AttendanceRecord = {
 ========================================================= */
 
 const PAGE_SIZE = 50;
+const EVENT_DAY_COUNT = 6;
 
 /* =========================================================
    Helpers
@@ -455,7 +457,7 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
 
               <span className="text-[10px] font-bold text-slate-500">
                 {Number(attendee.days_attended || 0)}
-                /5 days
+                /{EVENT_DAY_COUNT} days
               </span>
             </div>
           </div>
@@ -577,7 +579,7 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
                   {Number(
                     attendee.days_attended || 0
                   )}{" "}
-                  of 5 days attended
+                  of {EVENT_DAY_COUNT} days attended
                 </div>
               </div>
 
@@ -587,7 +589,10 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
             </div>
 
             <div className="space-y-1.5">
-              {[1, 2, 3, 4, 5].map((day) => {
+              {Array.from(
+                { length: EVENT_DAY_COUNT },
+                (_, index) => index + 1
+              ).map((day) => {
                 const value = getDayValue(
                   attendee,
                   day
@@ -720,7 +725,10 @@ const DesktopRow = memo(function DesktopRow({
         </div>
       </td>
 
-      {[1, 2, 3, 4, 5].map((day) => (
+      {Array.from(
+        { length: EVENT_DAY_COUNT },
+        (_, index) => index + 1
+      ).map((day) => (
         <td
           key={day}
           className="border-b border-slate-100 px-4 py-3.5 align-middle"
@@ -734,7 +742,7 @@ const DesktopRow = memo(function DesktopRow({
       <td className="border-b border-slate-100 px-4 py-3.5 text-center align-middle">
         <span className="inline-flex min-w-[52px] items-center justify-center rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-black text-fuchsia-700">
           {Number(attendee.days_attended || 0)}
-          /5
+          /{EVENT_DAY_COUNT}
         </span>
       </td>
 
@@ -1446,7 +1454,7 @@ export default function ReportsPage() {
         (attendee) =>
           Number(
             attendee.days_attended
-          ) === 5
+          ) === EVENT_DAY_COUNT
       ).length;
 
     const partialAttendance =
@@ -1455,7 +1463,7 @@ export default function ReportsPage() {
           attendee.days_attended
         );
 
-        return days > 0 && days < 5;
+        return days > 0 && days < EVENT_DAY_COUNT;
       }).length;
 
     const averageAttendance =
@@ -1504,6 +1512,7 @@ export default function ReportsPage() {
       "Day 3",
       "Day 4",
       "Day 5",
+      "Day 6",
       "Days Attended",
       "Attendance %",
     ];
@@ -1524,6 +1533,7 @@ export default function ReportsPage() {
         attendee.day_3 || "",
         attendee.day_4 || "",
         attendee.day_5 || "",
+        attendee.day_6 || "",
         Number(
           attendee.days_attended || 0
         ),
@@ -1670,7 +1680,7 @@ export default function ReportsPage() {
 
                   <p className="mt-2 max-w-2xl text-sm leading-6 text-white/75">
                     Registration, demographics and
-                    5-day service attendance in one
+                    6-day service attendance in one
                     place.
                   </p>
                 </div>
@@ -1706,6 +1716,16 @@ export default function ReportsPage() {
                     <Download className="h-4 w-4" />
                     Export Loaded CSV
                   </button>
+
+                  {isAdmin && (
+                    <Link
+                      href="/reports/stats"
+                      className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2.5 text-xs font-bold text-white ring-1 ring-white/20 backdrop-blur-sm transition hover:bg-white/25"
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                      Stats
+                    </Link>
+                  )}
                 </div>
               </div>
             </div>
@@ -1903,7 +1923,7 @@ export default function ReportsPage() {
                   </div>
 
                   <div className="mt-2 text-[11px] font-medium text-slate-400">
-                    Loaded records with all 5
+                    Loaded records with all 6
                     days
                   </div>
                 </div>
@@ -2273,6 +2293,7 @@ export default function ReportsPage() {
                       <col className="w-[180px]" />
                       <col className="w-[180px]" />
                       <col className="w-[180px]" />
+                      <col className="w-[180px]" />
 
                       <col className="w-[88px]" />
                       <col className="w-[130px]" />
@@ -2297,6 +2318,7 @@ export default function ReportsPage() {
                           "Day 3",
                           "Day 4",
                           "Day 5",
+                          "Day 6",
                         ].map(
                           (heading) => (
                             <th

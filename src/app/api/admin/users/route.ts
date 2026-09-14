@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -56,9 +57,7 @@ async function getAdminUser(request: NextRequest) {
     };
   }
 
-  // IMPORTANT:
   // Use the service-role client to read profiles.
-  // This avoids giving the anon role access to the profiles table.
   const { data: profile, error: profileError } =
     await supabaseAdmin
       .from("profiles")
@@ -406,3 +405,104 @@ export async function PATCH(request: NextRequest) {
       "User role updated successfully.",
   });
 }
+
+/* =========================================================
+   DELETE - Delete a system user
+   ========================================================= */
+
+export async function DELETE(request: NextRequest) {
+  const { user, error } = await getAdminUser(request);
+
+  if (!user) {
+    return NextResponse.json(
+      { error },
+      { status: 403 }
+    );
+  }
+
+  let body;
+
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json(
+      {
+        error: "Invalid request body.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const userId = String(
+    body.user_id || ""
+  ).trim();
+
+  if (!userId) {
+    return NextResponse.json(
+      {
+        error: "User ID is required.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // Prevent an administrator from deleting their own account.
+  if (userId === user.id) {
+    return NextResponse.json(
+      {
+        error:
+          "You cannot delete your own administrator account.",
+      },
+      { status: 400 }
+    );
+  }
+
+  // There is no foreign key cascade from profiles.id
+  // to auth.users.id, so delete the profile explicitly.
+  const { error: profileDeleteError } =
+    await supabaseAdmin
+      .from("profiles")
+      .delete()
+      .eq("id", userId);
+
+  if (profileDeleteError) {
+    console.error(
+      "Profile deletion error:",
+      profileDeleteError
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "Unable to delete the user's profile.",
+      },
+      { status: 500 }
+    );
+  }
+
+  // Delete the corresponding Supabase Auth account.
+  const { error: authDeleteError } =
+    await supabaseAdmin.auth.admin.deleteUser(
+      userId
+    );
+
+  if (authDeleteError) {
+    console.error(
+      "Auth user deletion error:",
+      authDeleteError
+    );
+
+    return NextResponse.json(
+      {
+        error:
+          "The profile was deleted, but the authentication account could not be deleted.",
+      },
+      { status: 500 }
+    );
+  }
+
+  return NextResponse.json({
+    message: "User deleted successfully.",
+  });
+}
+
