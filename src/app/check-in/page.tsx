@@ -1,9 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import {
+  ArrowLeft,
+  CalendarDays,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Clock3,
+  MapPin,
+  Phone,
+  Search,
+  User,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+
 import { supabase } from "@/lib/supabase";
-import AuthGuard from "@/components/AuthGuard";
+
+type Gender = "male" | "female";
+type MembershipStatus = "member" | "visitor";
 
 type Attendee = {
   id: string;
@@ -12,827 +34,1003 @@ type Attendee = {
   phone_last4: string | null;
   church: string | null;
   location: string | null;
+  gender: Gender | null;
+  membership_status: MembershipStatus | null;
 };
 
-type CheckInResult = {
-  status: "checked_in" | "already_attended";
-  attended_at: string;
+type EventService = {
+  id: string;
+  day_id: string;
+  day_number: number;
+  service_name: string;
+  start_time: string | null;
+  end_time: string | null;
+  description: string | null;
+  is_active: boolean;
 };
 
-type AttendanceRecord = {
+type AttendanceHistoryItem = {
   event_day: number;
   attended_at: string;
+  service_name: string | null;
+  start_time: string | null;
+  end_time: string | null;
 };
 
+function formatTime(value: string | null) {
+  if (!value) return "";
+
+  const [hours, minutes] = value.split(":");
+  const hour = Number(hours);
+
+  if (Number.isNaN(hour)) return value;
+
+  const suffix = hour >= 12 ? "PM" : "AM";
+  const formattedHour = hour % 12 || 12;
+
+  return `${formattedHour}:${minutes} ${suffix}`;
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function formatGender(gender: Gender | null) {
+  if (!gender) return null;
+  return gender === "male" ? "Male" : "Female";
+}
+
+function formatMembership(status: MembershipStatus | null) {
+  if (!status) return null;
+  return status === "member" ? "Member" : "Visitor";
+}
+
+function GenderBadge({ gender }: { gender: Gender | null }) {
+  if (!gender) return null;
+
+  return (
+    <span className="inline-flex items-center rounded-full bg-blue-50 px-2 py-1 text-[10px] font-black uppercase tracking-wide text-blue-700">
+      {formatGender(gender)}
+    </span>
+  );
+}
+
+function MembershipBadge({
+  status,
+}: {
+  status: MembershipStatus | null;
+}) {
+  if (!status) return null;
+
+  const isMember = status === "member";
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-wide ${
+        isMember
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-amber-50 text-amber-700"
+      }`}
+    >
+      {formatMembership(status)}
+    </span>
+  );
+}
+
+function PersonDetail({
+  icon,
+  children,
+}: {
+  icon: ReactNode;
+  children: ReactNode;
+}) {
+  return (
+    <div className="flex min-w-0 items-center gap-2 text-xs font-medium text-slate-500">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400">
+        {icon}
+      </span>
+
+      <span className="truncate">{children}</span>
+    </div>
+  );
+}
+
+function ServiceCard({
+  service,
+  selected,
+  attended,
+  onSelect,
+}: {
+  service: EventService;
+  selected: boolean;
+  attended: boolean;
+  onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={attended}
+      className={`w-full rounded-xl border p-4 text-left transition ${
+        attended
+          ? "cursor-default border-emerald-200 bg-emerald-50"
+          : selected
+          ? "border-fuchsia-500 bg-fuchsia-50 shadow-sm"
+          : "border-slate-200 bg-white hover:border-fuchsia-200 hover:bg-fuchsia-50/40"
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <p
+              className={`text-sm font-bold ${
+                attended
+                  ? "text-emerald-800"
+                  : selected
+                  ? "text-fuchsia-800"
+                  : "text-slate-900"
+              }`}
+            >
+              {service.service_name}
+            </p>
+
+            {attended && (
+              <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700">
+                <Check className="h-3 w-3" />
+                Attended
+              </span>
+            )}
+          </div>
+
+          {(service.start_time || service.end_time) && (
+            <div
+              className={`mt-2 flex items-center gap-1.5 text-xs font-semibold ${
+                attended
+                  ? "text-emerald-700"
+                  : selected
+                  ? "text-fuchsia-700"
+                  : "text-slate-500"
+              }`}
+            >
+              <Clock3 className="h-3.5 w-3.5" />
+
+              <span>
+                {formatTime(service.start_time)}
+                {service.end_time
+                  ? ` – ${formatTime(service.end_time)}`
+                  : ""}
+              </span>
+            </div>
+          )}
+
+          {service.description && (
+            <p
+              className={`mt-2 text-xs leading-5 ${
+                attended
+                  ? "text-emerald-700"
+                  : selected
+                  ? "text-fuchsia-700"
+                  : "text-slate-500"
+              }`}
+            >
+              {service.description}
+            </p>
+          )}
+        </div>
+
+        {!attended && (
+          <div
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full border ${
+              selected
+                ? "border-fuchsia-300 bg-fuchsia-600 text-white"
+                : "border-slate-200 bg-slate-50 text-slate-300"
+            }`}
+          >
+            {selected && <Check className="h-4 w-4" />}
+          </div>
+        )}
+      </div>
+    </button>
+  );
+}
+
+function AttendanceHistory({
+  history,
+}: {
+  history: AttendanceHistoryItem[];
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  if (history.length === 0) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-4">
+        <p className="text-sm font-semibold text-slate-500">
+          No attendance history found.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center justify-between gap-3 p-4 text-left transition hover:bg-slate-50"
+      >
+        <div>
+          <p className="text-sm font-bold text-slate-900">
+            Attendance history
+          </p>
+
+          <p className="mt-1 text-xs font-medium text-slate-500">
+            {history.length} attendance record
+            {history.length === 1 ? "" : "s"}
+          </p>
+        </div>
+
+        <span className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-100 text-slate-500">
+          {expanded ? (
+            <ChevronUp className="h-4 w-4" />
+          ) : (
+            <ChevronDown className="h-4 w-4" />
+          )}
+        </span>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-slate-100">
+          {history.map((item, index) => (
+            <div
+              key={`${item.event_day}-${item.attended_at}-${index}`}
+              className="flex items-start justify-between gap-4 border-b border-slate-100 p-4 last:border-b-0"
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-slate-900">
+                  Day {item.event_day}
+                </p>
+
+                <p className="mt-1 text-xs font-semibold text-slate-600">
+                  {item.service_name || "General attendance"}
+                </p>
+
+                {(item.start_time || item.end_time) && (
+                  <p className="mt-1 text-xs font-medium text-slate-400">
+                    {formatTime(item.start_time)}
+                    {item.end_time
+                      ? ` – ${formatTime(item.end_time)}`
+                      : ""}
+                  </p>
+                )}
+              </div>
+
+              <p className="shrink-0 text-right text-[11px] font-semibold text-slate-400">
+                {formatDateTime(item.attended_at)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function CheckInPage() {
-  const [query, setQuery] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
   const [attendees, setAttendees] = useState<Attendee[]>([]);
+  const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState("");
+
   const [selectedAttendee, setSelectedAttendee] =
     useState<Attendee | null>(null);
 
-  const [currentEventDay, setCurrentEventDay] = useState<number | null>(null);
-  const [loadingEventDay, setLoadingEventDay] = useState(true);
+  const [currentEventDay, setCurrentEventDay] = useState<number | null>(
+    null
+  );
 
-  const [loading, setLoading] = useState(false);
-  const [checkingIn, setCheckingIn] = useState(false);
+  const [services, setServices] = useState<EventService[]>([]);
+  const [loadingServices, setLoadingServices] = useState(false);
 
-  const [error, setError] = useState("");
-  const [checkInResult, setCheckInResult] =
-    useState<CheckInResult | null>(null);
+  const [selectedService, setSelectedService] =
+    useState<EventService | null>(null);
 
   const [attendanceHistory, setAttendanceHistory] = useState<
-    AttendanceRecord[]
+    AttendanceHistoryItem[]
   >([]);
+
   const [loadingHistory, setLoadingHistory] = useState(false);
 
-  useEffect(() => {
-    async function loadEventDay() {
-      const { data, error } = await supabase.rpc("get_current_event_day");
+  const [checkingIn, setCheckingIn] = useState(false);
+  const [checkInError, setCheckInError] = useState("");
+  const [checkInSuccess, setCheckInSuccess] = useState(false);
+  const [successTime, setSuccessTime] = useState<string | null>(null);
 
-      setLoadingEventDay(false);
+  const loadCurrentEventDay = useCallback(async () => {
+    const { data, error } = await supabase.rpc("get_current_event_day");
+
+    if (error) {
+      console.error("Failed to load current event day:", error);
+      return;
+    }
+
+    setCurrentEventDay(Number(data));
+  }, []);
+
+  const loadServices = useCallback(async () => {
+    setLoadingServices(true);
+
+    const { data, error } = await supabase.rpc("get_event_schedule");
+
+    if (error) {
+      console.error("Failed to load event schedule:", error);
+      setServices([]);
+      setLoadingServices(false);
+      return;
+    }
+
+    const rows = (data || []) as Array<{
+      day_id: string;
+      day_number: number;
+      service_id: string | null;
+      service_name: string | null;
+      start_time: string | null;
+      end_time: string | null;
+      description: string | null;
+      is_active: boolean | null;
+    }>;
+
+    const mappedServices: EventService[] = rows
+      .filter(
+        (row) =>
+          row.service_id &&
+          row.service_name &&
+          row.is_active === true
+      )
+      .map((row) => ({
+        id: row.service_id as string,
+        day_id: row.day_id,
+        day_number: Number(row.day_number),
+        service_name: row.service_name as string,
+        start_time: row.start_time,
+        end_time: row.end_time,
+        description: row.description,
+        is_active: true,
+      }));
+
+    setServices(mappedServices);
+    setLoadingServices(false);
+  }, []);
+
+  const loadAttendanceHistory = useCallback(
+    async (attendeeId: string) => {
+      setLoadingHistory(true);
+
+      const { data, error } = await supabase.rpc(
+        "get_attendee_attendance_history",
+        {
+          p_attendee_id: attendeeId,
+        }
+      );
 
       if (error) {
-        console.error("Event day error:", error);
-        setError("Unable to load the current event day.");
+        console.error("Failed to load attendance history:", error);
+        setAttendanceHistory([]);
+        setLoadingHistory(false);
         return;
       }
 
-      setCurrentEventDay(data);
+      setAttendanceHistory(
+        (data || []) as AttendanceHistoryItem[]
+      );
+
+      setLoadingHistory(false);
+    },
+    []
+  );
+
+  useEffect(() => {
+    loadCurrentEventDay();
+    loadServices();
+  }, [loadCurrentEventDay, loadServices]);
+
+  useEffect(() => {
+    const value = searchQuery.trim();
+
+    if (!value) {
+      setAttendees([]);
+      setSearchError("");
+      setSearching(false);
+      return;
     }
 
-    loadEventDay();
-  }, []);
+    const timeout = window.setTimeout(async () => {
+      setSearching(true);
+      setSearchError("");
 
-  async function loadAttendanceHistory(attendeeId: string) {
-    setLoadingHistory(true);
+      const { data, error } = await supabase.rpc(
+        "search_attendees",
+        {
+          p_query: value,
+        }
+      );
 
-    const { data, error } = await supabase.rpc(
-      "get_attendee_attendance_history",
-      {
-        p_attendee_id: attendeeId,
+      if (error) {
+        console.error("Search failed:", error);
+        setSearchError("Unable to search attendees.");
+        setAttendees([]);
+        setSearching(false);
+        return;
       }
-    );
 
-    setLoadingHistory(false);
+      setAttendees((data || []) as Attendee[]);
+      setSearching(false);
+    }, 300);
 
-    if (error) {
-      console.error("Attendance history error:", error);
-      setAttendanceHistory([]);
-      return;
-    }
+    return () => window.clearTimeout(timeout);
+  }, [searchQuery]);
 
-    setAttendanceHistory(data ?? []);
-  }
+  const currentDayServices = useMemo(() => {
+    if (!currentEventDay) return [];
 
-  async function handleSearch() {
-    const search = query.trim();
+    return services
+      .filter(
+        (service) =>
+          service.day_number === currentEventDay &&
+          service.is_active
+      )
+      .sort((a, b) => {
+        if (!a.start_time) return 1;
+        if (!b.start_time) return -1;
+        return a.start_time.localeCompare(b.start_time);
+      });
+  }, [services, currentEventDay]);
 
-    setSelectedAttendee(null);
-    setCheckInResult(null);
-    setAttendanceHistory([]);
-
-    if (!search) {
-      setAttendees([]);
-      setError("Enter a name, phone number, or registration number.");
-      return;
-    }
-
-    setLoading(true);
-    setError("");
-
-    const { data, error } = await supabase.rpc("search_attendees", {
-      p_query: search,
-    });
-
-    setLoading(false);
-
-    if (error) {
-      console.error("Search error:", error);
-      setAttendees([]);
-      setError("Unable to search attendees. Please try again.");
-      return;
-    }
-
-    setAttendees(data ?? []);
-
-    if (!data || data.length === 0) {
-      setError("No attendee found.");
-    }
-  }
-
-  async function handleSelect(attendee: Attendee) {
+  const selectAttendee = async (attendee: Attendee) => {
     setSelectedAttendee(attendee);
-    setCheckInResult(null);
-    setError("");
-    setAttendanceHistory([]);
+    setSearchQuery("");
+    setAttendees([]);
+    setSearchError("");
+    setSelectedService(null);
+    setCheckInError("");
+    setCheckInSuccess(false);
+    setSuccessTime(null);
 
     await loadAttendanceHistory(attendee.id);
-  }
+  };
 
-  async function handleCheckIn() {
+  const resetSelection = () => {
+    setSelectedAttendee(null);
+    setSelectedService(null);
+    setAttendanceHistory([]);
+    setSearchQuery("");
+    setAttendees([]);
+    setCheckInError("");
+    setCheckInSuccess(false);
+    setSuccessTime(null);
+  };
+
+  const handleCheckIn = async () => {
     if (!selectedAttendee) {
+      setCheckInError("Please select an attendee.");
       return;
     }
 
     if (!currentEventDay) {
-      setError("The current event day has not loaded yet.");
+      setCheckInError("The current event day could not be determined.");
+      return;
+    }
+
+    if (!selectedService) {
+      setCheckInError("Please select a service.");
       return;
     }
 
     setCheckingIn(true);
-    setError("");
-    setCheckInResult(null);
+    setCheckInError("");
 
     const { data, error } = await supabase.rpc("check_in_attendee", {
       p_attendee_id: selectedAttendee.id,
       p_event_day: currentEventDay,
-      p_station_id: "MAIN-ENTRANCE",
+      p_station_id: "check-in",
+      p_event_service_id: selectedService.id,
     });
-
-    setCheckingIn(false);
 
     if (error) {
-      console.error("Check-in error:", error);
-      setError("Unable to check in attendee. Please try again.");
+      console.error("Check-in failed:", error);
+      setCheckInError(
+        error.message || "Unable to complete check-in."
+      );
+      setCheckingIn(false);
       return;
     }
 
-    const result = data?.[0];
+    const result = Array.isArray(data) ? data[0] : data;
 
-    if (!result) {
-      setError("No check-in result was returned.");
+    if (result?.status === "already_attended") {
+      setCheckInError(
+        "This attendee has already checked in for this service."
+      );
+      setCheckingIn(false);
+      await loadAttendanceHistory(selectedAttendee.id);
       return;
     }
 
-    setCheckInResult({
-      status: result.status,
-      attended_at: result.attended_at,
-    });
+    setSuccessTime(result?.attended_at || new Date().toISOString());
+    setCheckInSuccess(true);
+    setCheckingIn(false);
 
     await loadAttendanceHistory(selectedAttendee.id);
-  }
+  };
 
-  function formatTime(timestamp: string) {
-    return new Date(timestamp).toLocaleTimeString([], {
-      hour: "numeric",
-      minute: "2-digit",
-      second: "2-digit",
-    });
-  }
-
-  function formatDateTime(timestamp: string) {
-    return new Date(timestamp).toLocaleString([], {
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  function getAttendanceForDay(day: number) {
-    return attendanceHistory.find(
-      (attendance) => attendance.event_day === day
-    );
-  }
-
-  function handleStartNewSearch() {
-    setQuery("");
-    setAttendees([]);
-    setSelectedAttendee(null);
-    setCheckInResult(null);
-    setAttendanceHistory([]);
-    setError("");
-  }
-
-  return (
-    <AuthGuard>
-      <main className="min-h-screen bg-slate-50 text-slate-900">
-        {/* Brand header */}
-        <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 shadow-sm backdrop-blur">
-          <div className="mx-auto flex w-full max-w-5xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
-            <Link href="/" className="flex min-w-0 items-center gap-3">
-              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-fuchsia-700 via-purple-700 to-blue-700 text-sm font-black text-white shadow-sm">
-                <span className="relative z-10">FV</span>
-                <div className="absolute -right-2 -top-2 h-6 w-6 rounded-full border-2 border-amber-300/70" />
-              </div>
-
-              <div className="min-w-0">
-                <p className="truncate text-[10px] font-bold uppercase tracking-[0.18em] text-fuchsia-700 sm:text-xs">
-                  Fountain of Victory Church
-                </p>
-
-                <p className="truncate text-xs text-slate-500">
-                  Attendance & Registration
-                </p>
-              </div>
-            </Link>
-
+  /*
+   * SUCCESS SCREEN
+   */
+  if (checkInSuccess && selectedAttendee && selectedService) {
+    return (
+      <main className="min-h-screen bg-slate-50 px-4 py-6 sm:py-8">
+        <div className="mx-auto w-full max-w-xl">
+          {/* Back to dashboard */}
+          <div className="mb-4">
             <Link
               href="/"
-              className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-700 shadow-sm transition hover:border-blue-200 hover:bg-blue-50 hover:text-blue-700 sm:px-4 sm:text-sm"
+              className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-fuchsia-700"
             >
+              <ArrowLeft className="h-4 w-4" />
               Dashboard
             </Link>
           </div>
+
+          <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="bg-gradient-to-r from-fuchsia-700 via-purple-700 to-blue-700 px-6 py-8 text-center text-white sm:px-10">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/15 text-white ring-1 ring-white/20">
+                <Check className="h-8 w-8" />
+              </div>
+
+              <p className="mt-5 text-[10px] font-semibold uppercase tracking-[0.18em] text-fuchsia-100">
+                Check-in successful
+              </p>
+
+              <h1 className="mt-2 text-2xl font-bold tracking-tight">
+                Welcome, {selectedAttendee.full_name}
+              </h1>
+
+              <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-white/80">
+                You have been checked in for{" "}
+                <span className="font-bold text-white">
+                  {selectedService.service_name}
+                </span>
+                .
+              </p>
+
+              {successTime && (
+                <p className="mt-3 text-xs font-medium text-white/60">
+                  {formatDateTime(successTime)}
+                </p>
+              )}
+            </div>
+
+            <div className="p-5 sm:p-6">
+              <div className="rounded-xl bg-slate-50 p-4">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                    <CalendarDays className="h-5 w-5" />
+                  </div>
+
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-blue-600">
+                      Day {currentEventDay}
+                    </p>
+
+                    <p className="mt-1 text-sm font-bold text-slate-900">
+                      {selectedService.service_name}
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={resetSelection}
+                className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-fuchsia-600 px-5 text-sm font-bold text-white transition hover:bg-fuchsia-700 active:scale-[0.99]"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Check in another attendee
+              </button>
+
+              <Link
+                href="/"
+                className="mt-2 flex h-11 w-full items-center justify-center rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 transition hover:bg-slate-50"
+              >
+                Return to dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  /*
+   * MAIN CHECK-IN PAGE
+   */
+  return (
+    <main className="min-h-screen bg-slate-50 px-3 py-4 text-slate-900 sm:px-4 sm:py-6">
+      <div className="mx-auto w-full max-w-xl">
+        {/* Header */}
+        <header className="mb-5">
+          <div className="flex items-center justify-between gap-3">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 rounded-lg px-2 py-2 text-xs font-semibold text-slate-500 transition hover:bg-white hover:text-fuchsia-700"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Dashboard
+            </Link>
+
+            <span className="rounded-full bg-fuchsia-50 px-3 py-1.5 text-[9px] font-bold uppercase tracking-wide text-fuchsia-700">
+              Check-in
+            </span>
+          </div>
+
+          <div className="mt-4 flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-600 to-purple-600 text-base font-bold text-white shadow-sm">
+              F
+            </div>
+
+            <div className="min-w-0">
+              <p className="truncate text-[10px] font-semibold uppercase tracking-[0.15em] text-fuchsia-600">
+                Fountain of Victory Church
+              </p>
+
+              <h1 className="mt-0.5 text-xl font-bold tracking-tight text-slate-900">
+                Attendee check-in
+              </h1>
+            </div>
+          </div>
         </header>
 
-        <div className="mx-auto w-full max-w-5xl px-3 pb-8 pt-4 sm:px-6 sm:pb-10 sm:pt-6">
-          {/* Hero */}
-          <section className="relative mb-5 overflow-hidden rounded-3xl bg-gradient-to-br from-fuchsia-800 via-purple-700 to-blue-700 p-5 text-white shadow-lg sm:p-7">
-            {/* Decorative orbit */}
-            <div className="pointer-events-none absolute -right-16 -top-20 h-56 w-56 rounded-full border-[18px] border-white/10" />
-            <div className="pointer-events-none absolute -right-5 -top-10 h-36 w-36 rounded-full border-2 border-amber-300/30" />
-            <div className="pointer-events-none absolute bottom-[-80px] left-[-50px] h-48 w-48 rounded-full border-[14px] border-white/5" />
+        {/* Search */}
+        {!selectedAttendee && (
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="mb-4">
+              <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-600">
+                Find attendee
+              </p>
+
+              <h2 className="mt-1 text-base font-bold text-slate-900">
+                Search for an attendee
+              </h2>
+
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                Search by name, registration number, phone, church or location.
+              </p>
+            </div>
 
             <div className="relative">
-              <div className="flex items-start justify-between gap-4">
-                <div className="min-w-0">
-                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-white/90 sm:text-xs">
-                    <span className="h-2 w-2 rounded-full bg-amber-300" />
-                    Entrance Desk
-                  </div>
+              <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-fuchsia-400" />
 
-                  <h1 className="text-2xl font-black tracking-tight sm:text-3xl">
-                    Check in attendee
-                  </h1>
-
-                  <p className="mt-2 max-w-xl text-sm leading-6 text-white/75 sm:text-base">
-                    Search for an attendee and record their attendance for
-                    today&apos;s event day.
-                  </p>
-                </div>
-
-                <div className="hidden shrink-0 sm:block">
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-white/15 bg-white/10 text-2xl font-black shadow-inner">
-                    ✓
-                  </div>
-                </div>
-              </div>
-
-              {/* Event day */}
-              <div className="mt-5 flex items-center justify-between gap-3 rounded-2xl border border-white/10 bg-black/10 px-4 py-3">
-                <div>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-white/55">
-                    Current event day
-                  </p>
-
-                  <p className="mt-0.5 text-sm font-bold sm:text-base">
-                    {loadingEventDay
-                      ? "Loading event day..."
-                      : `Day ${currentEventDay}`}
-                  </p>
-                </div>
-
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-amber-300 text-sm font-black text-slate-900 shadow-sm">
-                  {loadingEventDay ? "..." : currentEventDay}
-                </div>
-              </div>
+              <input
+                type="search"
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+                placeholder="Search attendee..."
+                className="h-13 w-full rounded-xl border border-slate-200 bg-slate-50 pl-12 pr-4 text-sm font-semibold text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-fuchsia-300 focus:bg-white focus:ring-2 focus:ring-fuchsia-100"
+              />
             </div>
-          </section>
 
-          {/* Success / Already attended */}
-          {checkInResult && selectedAttendee && (
-            <section
-              className={`mb-5 overflow-hidden rounded-3xl border shadow-sm ${
-                checkInResult.status === "checked_in"
-                  ? "border-emerald-200 bg-white"
-                  : "border-amber-200 bg-white"
-              }`}
-            >
-              <div
-                className={`px-5 py-4 sm:px-6 ${
-                  checkInResult.status === "checked_in"
-                    ? "bg-emerald-50"
-                    : "bg-amber-50"
-                }`}
-              >
-                <div className="flex items-start gap-3">
+            {searching && (
+              <div className="mt-4 flex items-center gap-2 text-xs font-semibold text-slate-400">
+                <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-fuchsia-100 border-t-fuchsia-600" />
+                Searching...
+              </div>
+            )}
+
+            {searchError && (
+              <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                {searchError}
+              </div>
+            )}
+
+            {!searching &&
+              searchQuery.trim() &&
+              attendees.length === 0 &&
+              !searchError && (
+                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-5 text-center">
+                  <Users className="mx-auto h-6 w-6 text-slate-300" />
+
+                  <p className="mt-2 text-sm font-bold text-slate-700">
+                    No attendees found
+                  </p>
+
+                  <p className="mt-1 text-xs font-medium text-slate-400">
+                    Try another name or registration number.
+                  </p>
+                </div>
+              )}
+
+            {/* Search results */}
+            {attendees.length > 0 && (
+              <div className="mt-4 space-y-2">
+                {attendees.map((attendee) => (
                   <div
-                    className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-xl font-black ${
-                      checkInResult.status === "checked_in"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
+                    key={attendee.id}
+                    className="rounded-xl border border-slate-200 bg-white p-4 transition hover:border-fuchsia-200 hover:bg-fuchsia-50/20"
                   >
-                    {checkInResult.status === "checked_in" ? "✓" : "!"}
+                    <div className="flex items-start gap-3">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-fuchsia-50 text-fuchsia-600">
+                        <Users className="h-5 w-5" />
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="truncate text-sm font-bold text-slate-900">
+                                {attendee.full_name}
+                              </p>
+
+                              {/* Member / Visitor + Gender */}
+                              <MembershipBadge
+                                status={attendee.membership_status}
+                              />
+
+                              <GenderBadge
+                                gender={attendee.gender}
+                              />
+                            </div>
+
+                            <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                              #{attendee.registration_number}
+                            </p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => selectAttendee(attendee)}
+                            className="flex shrink-0 items-center gap-1.5 rounded-lg bg-fuchsia-600 px-3 py-2 text-[11px] font-bold text-white shadow-sm transition hover:bg-fuchsia-700 active:scale-[0.98]"
+                          >
+                            <Check className="h-3.5 w-3.5" />
+                            Select
+                          </button>
+                        </div>
+
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                          {attendee.phone_last4 && (
+                            <PersonDetail
+                              icon={<Phone className="h-3.5 w-3.5" />}
+                            >
+                              {attendee.phone_last4}
+                            </PersonDetail>
+                          )}
+
+                          {attendee.church && (
+                            <PersonDetail
+                              icon={<Users className="h-3.5 w-3.5" />}
+                            >
+                              {attendee.church}
+                            </PersonDetail>
+                          )}
+
+                          {attendee.location && (
+                            <PersonDetail
+                              icon={<MapPin className="h-3.5 w-3.5" />}
+                            >
+                              {attendee.location}
+                            </PersonDetail>
+                          )}
+
+                          {formatGender(attendee.gender) && (
+                            <PersonDetail
+                              icon={<User className="h-3.5 w-3.5" />}
+                            >
+                              {formatGender(attendee.gender)}
+                            </PersonDetail>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* Selected attendee */}
+        {selectedAttendee && (
+          <>
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                    <User className="h-5 w-5" />
                   </div>
 
                   <div className="min-w-0">
-                    <p
-                      className={`text-xs font-bold uppercase tracking-wide ${
-                        checkInResult.status === "checked_in"
-                          ? "text-emerald-700"
-                          : "text-amber-700"
-                      }`}
-                    >
-                      {checkInResult.status === "checked_in"
-                        ? "Attendance recorded"
-                        : "Already recorded"}
-                    </p>
-
-                    <h2 className="mt-1 break-words text-lg font-black text-slate-950 sm:text-xl">
-                      {selectedAttendee.full_name}
-                    </h2>
-
-                    <p className="mt-1 text-xs text-slate-600 sm:text-sm">
-                      {checkInResult.status === "checked_in"
-                        ? "Successfully checked in at"
-                        : "First attendance was recorded at"}{" "}
-                      <span className="font-bold">
-                        {formatTime(checkInResult.attended_at)}
-                      </span>
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="p-4 sm:p-5">
-                <button
-                  type="button"
-                  onClick={handleStartNewSearch}
-                  className="min-h-12 w-full rounded-xl bg-gradient-to-r from-fuchsia-700 to-blue-700 px-4 py-3 text-sm font-bold text-white shadow-sm transition hover:from-fuchsia-800 hover:to-blue-800 active:scale-[0.99]"
-                >
-                  Check in another attendee
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* Selected attendee */}
-          {selectedAttendee && (
-            <section className="mb-5 overflow-hidden rounded-3xl border border-blue-100 bg-white shadow-sm">
-              {/* Selected header */}
-              <div className="border-b border-slate-100 bg-gradient-to-r from-sky-50 to-white px-4 py-4 sm:px-6">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-100 font-black text-blue-700">
-                      {selectedAttendee.full_name
-                        .split(" ")
-                        .map((part) => part[0])
-                        .slice(0, 2)
-                        .join("")
-                        .toUpperCase()}
-                    </div>
-
-                    <div className="min-w-0">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600">
-                        Selected attendee
-                      </p>
-
-                      <h2 className="mt-0.5 break-words text-lg font-black leading-tight text-slate-950 sm:text-xl">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <h2 className="truncate text-base font-bold text-slate-900">
                         {selectedAttendee.full_name}
                       </h2>
-                    </div>
-                  </div>
 
-                  <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-bold text-blue-700 sm:text-xs">
-                    {selectedAttendee.registration_number}
-                  </span>
+                      {/* Member / Visitor + Gender */}
+                      <MembershipBadge
+                        status={selectedAttendee.membership_status}
+                      />
+
+                      <GenderBadge
+                        gender={selectedAttendee.gender}
+                      />
+                    </div>
+
+                    <p className="mt-1 text-xs font-semibold text-slate-500">
+                      #{selectedAttendee.registration_number}
+                    </p>
+                  </div>
                 </div>
+
+                <button
+                  type="button"
+                  onClick={resetSelection}
+                  className="shrink-0 rounded-lg border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-xs font-bold text-fuchsia-700 transition hover:bg-fuchsia-100"
+                >
+                  Change
+                </button>
               </div>
 
-              <div className="p-4 sm:p-6">
-                {/* Details */}
-                <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                      Church
-                    </p>
-                    <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-                      {selectedAttendee.church || "Not provided"}
-                    </p>
-                  </div>
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {selectedAttendee.phone_last4 && (
+                  <PersonDetail
+                    icon={<Phone className="h-3.5 w-3.5" />}
+                  >
+                    {selectedAttendee.phone_last4}
+                  </PersonDetail>
+                )}
 
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                      Location
-                    </p>
-                    <p className="mt-1 break-words text-sm font-semibold text-slate-800">
-                      {selectedAttendee.location || "Not provided"}
-                    </p>
-                  </div>
+                {selectedAttendee.church && (
+                  <PersonDetail
+                    icon={<Users className="h-3.5 w-3.5" />}
+                  >
+                    {selectedAttendee.church}
+                  </PersonDetail>
+                )}
 
-                  <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                    <p className="text-[10px] font-bold uppercase tracking-wide text-slate-400">
-                      Phone
-                    </p>
-                    <p className="mt-1 text-sm font-semibold text-slate-800">
-                      {selectedAttendee.phone_last4 || "Not provided"}
-                    </p>
-                  </div>
-                </div>
+                {selectedAttendee.location && (
+                  <PersonDetail
+                    icon={<MapPin className="h-3.5 w-3.5" />}
+                  >
+                    {selectedAttendee.location}
+                  </PersonDetail>
+                )}
 
-                {/* Attendance history */}
-                <div className="mt-6 border-t border-slate-100 pt-5">
-                  <div className="mb-4 flex items-center justify-between gap-3">
-                    <div>
-                      <h3 className="text-sm font-black text-slate-950">
-                        Attendance history
-                      </h3>
-
-                      <p className="mt-1 text-xs text-slate-500">
-                        Attendance across all event days
-                      </p>
-                    </div>
-
-                    {!loadingHistory && (
-                      <span className="rounded-full bg-fuchsia-50 px-3 py-1 text-xs font-bold text-fuchsia-700">
-                        {attendanceHistory.length}/5 attended
-                      </span>
-                    )}
-                  </div>
-
-                  {loadingHistory ? (
-                    <div className="rounded-2xl border border-sky-100 bg-sky-50 px-4 py-6 text-center text-sm font-medium text-slate-500">
-                      <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-white text-blue-600 shadow-sm">
-                        ...
-                      </div>
-                      Loading attendance history...
-                    </div>
-                  ) : (
-                    <>
-                      {/* Mobile history */}
-                      <div className="space-y-2 sm:hidden">
-                        {[1, 2, 3, 4, 5].map((day) => {
-                          const attendance = getAttendanceForDay(day);
-                          const isCurrentDay = currentEventDay === day;
-
-                          return (
-                            <div
-                              key={day}
-                              className={`flex min-h-14 items-center justify-between rounded-2xl border px-3 py-2.5 ${
-                                isCurrentDay
-                                  ? "border-blue-200 bg-blue-50"
-                                  : "border-slate-200 bg-slate-50"
-                              }`}
-                            >
-                              <div className="flex items-center gap-3">
-                                <div
-                                  className={`flex h-9 w-9 items-center justify-center rounded-full text-sm font-black ${
-                                    attendance
-                                      ? "bg-emerald-100 text-emerald-700"
-                                      : isCurrentDay
-                                        ? "bg-blue-100 text-blue-600"
-                                        : "bg-slate-200 text-slate-400"
-                                  }`}
-                                >
-                                  {attendance ? "✓" : "—"}
-                                </div>
-
-                                <div>
-                                  <p
-                                    className={`text-sm font-bold ${
-                                      isCurrentDay
-                                        ? "text-blue-700"
-                                        : "text-slate-700"
-                                    }`}
-                                  >
-                                    Day {day}
-                                  </p>
-
-                                  {isCurrentDay && (
-                                    <p className="text-[10px] font-bold uppercase tracking-wide text-blue-500">
-                                      Today
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-
-                              <div className="text-right">
-                                {attendance ? (
-                                  <>
-                                    <p className="text-xs font-bold text-emerald-700">
-                                      Attended
-                                    </p>
-
-                                    <p className="mt-0.5 text-[11px] text-slate-500">
-                                      {formatTime(attendance.attended_at)}
-                                    </p>
-                                  </>
-                                ) : (
-                                  <p className="text-xs font-medium text-slate-400">
-                                    Not attended
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-
-                      {/* Desktop history */}
-                      <div className="hidden grid-cols-5 gap-2 sm:grid">
-                        {[1, 2, 3, 4, 5].map((day) => {
-                          const attendance = getAttendanceForDay(day);
-                          const isCurrentDay = currentEventDay === day;
-
-                          return (
-                            <div
-                              key={day}
-                              className={`rounded-2xl border p-3 text-center ${
-                                isCurrentDay
-                                  ? "border-blue-200 bg-blue-50"
-                                  : "border-slate-200 bg-slate-50"
-                              }`}
-                            >
-                              <p
-                                className={`text-xs font-black ${
-                                  isCurrentDay
-                                    ? "text-blue-700"
-                                    : "text-slate-600"
-                                }`}
-                              >
-                                Day {day}
-                              </p>
-
-                              {isCurrentDay && (
-                                <p className="mt-0.5 text-[9px] font-bold uppercase tracking-wide text-blue-500">
-                                  Today
-                                </p>
-                              )}
-
-                              <div
-                                className={`mx-auto mt-3 flex h-9 w-9 items-center justify-center rounded-full text-sm font-black ${
-                                  attendance
-                                    ? "bg-emerald-100 text-emerald-700"
-                                    : "bg-slate-200 text-slate-400"
-                                }`}
-                              >
-                                {attendance ? "✓" : "—"}
-                              </div>
-
-                              <p className="mt-2 text-[10px] leading-3 text-slate-500">
-                                {attendance
-                                  ? formatTime(attendance.attended_at)
-                                  : "Not yet"}
-                              </p>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </>
-                  )}
-
-                  {!loadingHistory && attendanceHistory.length > 0 && (
-                    <div className="mt-3 rounded-2xl border border-amber-100 bg-amber-50 px-4 py-3">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-100 text-sm text-amber-700">
-                          ★
-                        </div>
-
-                        <div>
-                          <p className="text-xs font-bold text-amber-900">
-                            Latest attendance
-                          </p>
-
-                          <p className="mt-1 text-xs leading-5 text-amber-800/75">
-                            Day{" "}
-                            {
-                              attendanceHistory[
-                                attendanceHistory.length - 1
-                              ].event_day
-                            }{" "}
-                            ·{" "}
-                            {formatDateTime(
-                              attendanceHistory[
-                                attendanceHistory.length - 1
-                              ].attended_at
-                            )}
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Check-in action */}
-                {!checkInResult && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={handleCheckIn}
-                      disabled={checkingIn || !currentEventDay}
-                      className="mt-6 min-h-14 w-full rounded-2xl bg-gradient-to-r from-fuchsia-700 via-purple-700 to-blue-700 px-4 py-3 text-base font-black text-white shadow-md transition hover:from-fuchsia-800 hover:via-purple-800 hover:to-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {checkingIn
-                        ? "Checking in..."
-                        : !currentEventDay
-                          ? "Loading event day..."
-                          : `Check in ${selectedAttendee.full_name}`}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedAttendee(null);
-                        setCheckInResult(null);
-                        setAttendanceHistory([]);
-                      }}
-                      className="mt-2 min-h-11 w-full rounded-xl px-4 py-3 text-sm font-bold text-slate-500 transition hover:bg-slate-100 active:bg-slate-100"
-                    >
-                      Choose a different attendee
-                    </button>
-                  </>
+                {formatGender(selectedAttendee.gender) && (
+                  <PersonDetail
+                    icon={<User className="h-3.5 w-3.5" />}
+                  >
+                    {formatGender(selectedAttendee.gender)}
+                  </PersonDetail>
                 )}
               </div>
             </section>
-          )}
 
-          {/* Search */}
-          {!checkInResult && (
-            <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
-              <div className="mb-4 flex items-start gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-lg font-black text-blue-600">
-                  ⌕
-                </div>
-
-                <div>
-                  <h2 className="text-base font-black text-slate-950 sm:text-lg">
-                    Find an attendee
-                  </h2>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">
-                    Search by name, phone number, or registration number.
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  id="search"
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      handleSearch();
-                    }
-                  }}
-                  placeholder="Name, phone, or REG-000001"
-                  className="min-h-13 min-w-0 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-base font-medium outline-none transition placeholder:text-slate-400 focus:border-fuchsia-500 focus:ring-4 focus:ring-fuchsia-50 sm:flex-1"
-                />
-
-                <button
-                  type="button"
-                  onClick={handleSearch}
-                  disabled={loading}
-                  className="min-h-13 w-full rounded-xl bg-blue-600 px-6 py-3 text-sm font-black text-white shadow-sm transition hover:bg-blue-700 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 sm:w-auto"
-                >
-                  {loading ? "Searching..." : "Search attendee"}
-                </button>
-              </div>
-
-              <div className="mt-3 flex items-start gap-2 rounded-xl bg-sky-50 px-3 py-2.5">
-                <span className="text-sm text-blue-600">ⓘ</span>
-
-                <p className="text-xs leading-5 text-slate-600">
-                  For duplicate names, confirm the church and location before
-                  selecting the attendee.
-                </p>
-              </div>
-
-              {error && (
-                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm font-medium leading-5 text-amber-800">
-                  {error}
-                </div>
-              )}
-            </section>
-          )}
-
-          {/* Search results */}
-          {attendees.length > 0 &&
-            !selectedAttendee &&
-            !checkInResult && (
-              <section className="mt-5">
-                <div className="mb-3 flex items-center justify-between gap-3">
+            {/* Service selection */}
+            <section className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+              <div className="mb-4">
+                <div className="flex items-center justify-between gap-3">
                   <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-fuchsia-600">
-                      Matching attendees
+                    <p className="text-xs font-semibold uppercase tracking-wider text-fuchsia-600">
+                      Event service
                     </p>
 
-                    <h2 className="mt-0.5 text-lg font-black text-slate-950">
-                      Search results
-                    </h2>
+                    <h3 className="mt-1 text-base font-bold text-slate-900">
+                      Select service
+                    </h3>
+
+                    <p className="mt-1 text-xs font-medium text-slate-500">
+                      Choose the service this attendee is attending.
+                    </p>
                   </div>
 
-                  <span className="shrink-0 rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-600">
-                    {attendees.length} found
-                  </span>
-                </div>
-
-                <div className="space-y-3">
-                  {attendees.map((attendee) => (
-                    <button
-                      key={attendee.id}
-                      type="button"
-                      onClick={() => handleSelect(attendee)}
-                      className="group w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-blue-200 hover:shadow-md active:scale-[0.99] sm:p-5"
-                    >
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-fuchsia-100 to-blue-100 text-sm font-black text-blue-700">
-                          {attendee.full_name
-                            .split(" ")
-                            .map((part) => part[0])
-                            .slice(0, 2)
-                            .join("")
-                            .toUpperCase()}
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-                          <h3 className="break-words text-sm font-black text-slate-950 sm:text-base">
-                            {attendee.full_name}
-                          </h3>
-
-                          <p className="mt-1 text-xs font-bold text-blue-600 sm:text-sm">
-                            {attendee.registration_number}
-                          </p>
-                        </div>
-
-                        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1.5 text-[10px] font-black text-blue-700 transition group-hover:bg-blue-600 group-hover:text-white sm:px-3 sm:text-xs">
-                          Select
-                        </span>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-1 gap-2 border-t border-slate-100 pt-3 text-xs text-slate-600 sm:grid-cols-3 sm:text-sm">
-                        <div className="min-w-0">
-                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                            Church
-                          </p>
-
-                          <p className="mt-0.5 break-words font-medium">
-                            {attendee.church || "Not provided"}
-                          </p>
-                        </div>
-
-                        <div className="min-w-0">
-                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                            Location
-                          </p>
-
-                          <p className="mt-0.5 break-words font-medium">
-                            {attendee.location || "Not provided"}
-                          </p>
-                        </div>
-
-                        <div>
-                          <p className="text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                            Phone
-                          </p>
-
-                          <p className="mt-0.5 font-medium">
-                            {attendee.phone_last4 || "Not provided"}
-                          </p>
-                        </div>
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              </section>
-            )}
-
-          {/* Register link */}
-          {!selectedAttendee && !checkInResult && (
-            <section className="mt-5 overflow-hidden rounded-3xl border border-sky-100 bg-white shadow-sm">
-              <div className="flex items-start gap-4 bg-gradient-to-r from-sky-50 via-white to-fuchsia-50 p-4 sm:p-5">
-                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-blue-100 to-fuchsia-100 text-xl font-black text-fuchsia-700">
-                  +
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <h3 className="text-sm font-black text-slate-950 sm:text-base">
-                    Can&apos;t find the attendee?
-                  </h3>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">
-                    Register them first, then return here to check them in.
-                  </p>
-
-                  <Link
-                    href="/register"
-                    className="mt-3 inline-flex min-h-10 items-center rounded-xl bg-fuchsia-50 px-3.5 py-2 text-xs font-black text-fuchsia-700 transition hover:bg-fuchsia-100 sm:text-sm"
-                  >
-                    Register new attendee
-                    <span className="ml-1.5">→</span>
-                  </Link>
+                  {currentEventDay && (
+                    <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wide text-blue-700">
+                      Day {currentEventDay}
+                    </span>
+                  )}
                 </div>
               </div>
+
+              {loadingServices ? (
+                <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs font-semibold text-slate-500">
+                  <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-fuchsia-100 border-t-fuchsia-600" />
+                  Loading services...
+                </div>
+              ) : currentDayServices.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-5 text-center">
+                  <CalendarDays className="mx-auto h-6 w-6 text-fuchsia-300" />
+
+                  <p className="mt-2 text-sm font-bold text-slate-700">
+                    No active services
+                  </p>
+
+                  <p className="mt-1 text-xs font-medium text-slate-400">
+                    There are currently no active services for today.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {currentDayServices.map((service) => {
+                    const attended = attendanceHistory.some(
+                      (item) =>
+                        item.service_name === service.service_name &&
+                        item.event_day === currentEventDay
+                    );
+
+                    return (
+                      <ServiceCard
+                        key={service.id}
+                        service={service}
+                        selected={selectedService?.id === service.id}
+                        attended={attended}
+                        onSelect={() => {
+                          if (!attended) {
+                            setSelectedService(service);
+                            setCheckInError("");
+                          }
+                        }}
+                      />
+                    );
+                  })}
+                </div>
+              )}
+
+              {checkInError && (
+                <div className="mt-4 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-semibold text-red-700">
+                  {checkInError}
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleCheckIn}
+                disabled={
+                  checkingIn ||
+                  !selectedService ||
+                  currentDayServices.length === 0
+                }
+                className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-fuchsia-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+              >
+                {checkingIn ? (
+                  <>
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                    Checking in...
+                  </>
+                ) : (
+                  <>
+                    <Check className="h-4 w-4" />
+                    Check in attendee
+                  </>
+                )}
+              </button>
             </section>
-          )}
 
-          {/* Footer branding */}
-          <footer className="mt-8 pb-4 text-center">
-            <div className="mx-auto mb-3 h-px w-20 bg-gradient-to-r from-fuchsia-500 via-purple-500 to-blue-500" />
-
-            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-              Fountain of Victory Church
-            </p>
-
-            <p className="mt-1 text-[10px] text-slate-400">
-              The Pillar and Ground of Truth
-            </p>
-          </footer>
-        </div>
-      </main>
-    </AuthGuard>
+            {/* Attendance history */}
+            <section className="mt-4">
+              {loadingHistory ? (
+                <div className="rounded-xl border border-slate-200 bg-white p-4">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-fuchsia-100 border-t-fuchsia-600" />
+                    Loading attendance history...
+                  </div>
+                </div>
+              ) : (
+                <AttendanceHistory history={attendanceHistory} />
+              )}
+            </section>
+          </>
+        )}
+      </div>
+    </main>
   );
 }
