@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -87,7 +88,6 @@ export default function HomePage() {
 
   const [selectedDayId, setSelectedDayId] = useState<string | null>(null);
 
-  // The actual day currently used by the check-in page.
   const [currentEventDay, setCurrentEventDay] = useState<number | null>(null);
   const [loadingCurrentDay, setLoadingCurrentDay] = useState(true);
   const [settingCurrentDay, setSettingCurrentDay] = useState(false);
@@ -109,6 +109,7 @@ export default function HomePage() {
   const [updatingService, setUpdatingService] = useState(false);
 
   const isAdmin = role === "admin";
+  const isEventStaff = role === "event_staff";
 
   const selectedDay = useMemo(
     () => eventDays.find((day) => day.id === selectedDayId) ?? null,
@@ -117,6 +118,15 @@ export default function HomePage() {
 
   const activeServices =
     selectedDay?.services.filter((service) => service.is_active) ?? [];
+
+  const currentDay = useMemo(
+    () =>
+      eventDays.find((day) => day.day_number === currentEventDay) ?? null,
+    [eventDays, currentEventDay]
+  );
+
+  const currentDayServices =
+    currentDay?.services.filter((service) => service.is_active) ?? [];
 
   const actions = allActions.filter((action) =>
     action.roles.includes(role ?? "")
@@ -652,6 +662,55 @@ export default function HomePage() {
           </div>
         </section>
 
+        {/* Event staff quick actions */}
+        {isEventStaff && actions.length > 0 && (
+          <section className="mb-5 sm:mb-6">
+            <div className="mb-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-fuchsia-600 sm:text-xs">
+                Quick actions
+              </p>
+
+              <h3 className="mt-1 text-base font-bold text-slate-900 sm:text-lg">
+                What would you like to do?
+              </h3>
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {actions.map((action) => (
+                <Link
+                  key={action.title}
+                  href={action.href}
+                  className="group flex min-h-[96px] items-center rounded-xl border border-slate-200 bg-white p-4 shadow-sm transition hover:border-fuchsia-300 hover:shadow-md active:scale-[0.99] sm:min-h-[110px] sm:rounded-2xl sm:p-5"
+                >
+                  <div className="flex w-full items-center gap-4">
+                    <div
+                      className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-xl font-bold ${getActionIconClass(
+                        action.accent
+                      )} sm:h-14 sm:w-14 sm:text-2xl`}
+                    >
+                      {action.icon}
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+                      <h4 className="text-sm font-bold text-slate-900 group-hover:text-fuchsia-700 sm:text-base">
+                        {action.title}
+                      </h4>
+
+                      <p className="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">
+                        {action.description}
+                      </p>
+                    </div>
+
+                    <span className="shrink-0 text-lg font-semibold text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-fuchsia-500">
+                      →
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* Stats */}
         <section className="mb-5 grid grid-cols-2 gap-2.5 sm:mb-7 sm:gap-3 lg:grid-cols-4">
           <StatCard
@@ -687,426 +746,511 @@ export default function HomePage() {
           />
         </section>
 
-        {/* Schedule */}
-        <section className="w-full rounded-xl border border-slate-200 bg-white shadow-sm sm:rounded-2xl">
-          {/* Schedule header */}
-          <div className="border-b border-slate-200 px-3.5 py-3.5 sm:px-6 sm:py-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0">
+        {/* Event staff current day */}
+        {isEventStaff && (
+          <section className="mb-5 space-y-5 sm:mb-6">
+            <div className="rounded-xl border border-slate-200 bg-white shadow-sm sm:rounded-2xl">
+              <div className="border-b border-slate-200 px-3.5 py-3.5 sm:px-6 sm:py-4">
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-fuchsia-600 sm:text-xs">
-                  Event schedule
+                  Today
                 </p>
 
                 <h3 className="mt-0.5 text-base font-bold text-slate-900 sm:mt-1 sm:text-lg">
-                  Services
+                  Current event day
                 </h3>
               </div>
 
-              {isAdmin && selectedDay && (
-                <button
-                  onClick={openAddService}
-                  className="shrink-0 rounded-lg bg-fuchsia-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-fuchsia-700 sm:px-4 sm:py-2.5 sm:text-sm"
-                >
-                  + Add service
-                </button>
-              )}
-            </div>
-          </div>
-
-          {loadingSchedule ? (
-            <div className="px-4 py-10 text-center">
-              <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-fuchsia-100 border-t-fuchsia-600" />
-              <p className="text-sm text-slate-500">
-                Loading schedule...
-              </p>
-            </div>
-          ) : scheduleError ? (
-            <div className="m-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700 sm:m-4 sm:text-sm">
-              {scheduleError}
-            </div>
-          ) : (
-            <>
-              {/* Day selector */}
-              <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-2.5 sm:px-5 sm:py-3">
-                <div
-                  className="flex gap-1.5 overflow-x-auto pb-1"
-                  style={{
-                    scrollbarWidth: "none",
-                    msOverflowStyle: "none",
-                  }}
-                >
-                  {eventDays.map((day) => {
-                    const isSelected = selectedDayId === day.id;
-                    const isCurrent = currentEventDay === day.day_number;
-
-                    return (
-                      <button
-                        key={day.id}
-                        onClick={() => {
-                          setSelectedDayId(day.id);
-                          setAddingService(false);
-                          cancelEditingService();
-                          setScheduleError("");
-                          setScheduleMessage("");
-                        }}
-                        className={`relative min-w-[68px] shrink-0 rounded-lg border px-3 py-2 text-center transition sm:min-w-[90px] sm:px-4 ${
-                          isSelected
-                            ? "border-fuchsia-600 bg-fuchsia-600 text-white shadow-sm"
-                            : "border-slate-200 bg-white text-slate-600 hover:border-fuchsia-200 hover:bg-fuchsia-50 hover:text-fuchsia-700"
-                        }`}
-                      >
-                        <span className="block text-[10px] font-bold uppercase tracking-wide sm:text-xs">
-                          Day {day.day_number}
-                        </span>
-
-                        {isCurrent && (
-                          <span
-                            className={`mt-1 block text-[8px] font-bold uppercase tracking-wide ${
-                              isSelected
-                                ? "text-emerald-100"
-                                : "text-emerald-600"
-                            }`}
-                          >
-                            Live
-                          </span>
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {selectedDay && (
-                <div className="p-3.5 sm:p-6">
-                  {/* Selected day heading */}
-                  <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-blue-700 sm:text-[10px]">
-                          Day {selectedDay.day_number}
-                        </span>
-
-                        {selectedDay.event_date && (
-                          <span className="truncate text-[10px] text-slate-400 sm:text-xs">
-                            {selectedDay.event_date}
-                          </span>
-                        )}
-                      </div>
-
-                      <h4 className="mt-1.5 truncate text-base font-bold text-slate-900 sm:mt-2 sm:text-lg">
-                        {selectedDay.day_name}
-                      </h4>
-                    </div>
-
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] font-medium text-slate-400 sm:text-xs">
-                        {activeServices.length}{" "}
-                        {activeServices.length === 1
-                          ? "service"
-                          : "services"}
-                      </span>
-
-                      {currentEventDay === selectedDay.day_number ? (
-                        <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
-                          Current check-in day
-                        </span>
-                      ) : (
-                        isAdmin && (
-                          <button
-                            onClick={() =>
-                              handleSetCurrentDay(selectedDay.day_number)
-                            }
-                            disabled={settingCurrentDay}
-                            className="rounded-lg border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-[10px] font-bold text-fuchsia-700 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-60 sm:text-xs"
-                          >
-                            {settingCurrentDay
-                              ? "Updating..."
-                              : `Set Day ${selectedDay.day_number} for check-in`}
-                          </button>
-                        )
-                      )}
-                    </div>
+              <div className="p-3.5 sm:p-6">
+                {loadingSchedule ? (
+                  <div className="py-5 text-center">
+                    <p className="text-sm text-slate-500">
+                      Loading today&apos;s schedule...
+                    </p>
                   </div>
-
-                  {/* Messages */}
-                  {scheduleMessage && (
-                    <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-700 sm:px-4 sm:py-3 sm:text-sm">
-                      {scheduleMessage}
-                    </div>
-                  )}
-
-                  {scheduleError && (
-                    <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-medium text-red-700 sm:px-4 sm:py-3 sm:text-sm">
-                      {scheduleError}
-                    </div>
-                  )}
-
-                  {/* Add service form */}
-                  {isAdmin && addingService && (
-                    <form
-                      onSubmit={handleCreateService}
-                      className="mb-5 rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 p-3.5 sm:p-5"
-                    >
-                      <div className="mb-4">
-                        <h5 className="text-sm font-bold text-slate-900">
-                          Add service
-                        </h5>
-
-                        <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-xs">
-                          Add a service to {selectedDay.day_name}. Multiple
-                          services may run at the same time.
-                        </p>
-                      </div>
-
-                      <div className="space-y-3.5 sm:space-y-4">
-                        <Field label="Service name" required>
-                          <input
-                            value={serviceName}
-                            onChange={(e) => setServiceName(e.target.value)}
-                            placeholder="Morning Service"
-                            className="input"
-                            autoFocus
-                          />
-                        </Field>
-
-                        <div className="grid grid-cols-2 gap-3">
-                          <Field label="Start time">
-                            <input
-                              type="time"
-                              value={serviceStartTime}
-                              onChange={(e) =>
-                                setServiceStartTime(e.target.value)
-                              }
-                              className="input"
-                            />
-                          </Field>
-
-                          <Field label="End time">
-                            <input
-                              type="time"
-                              value={serviceEndTime}
-                              onChange={(e) =>
-                                setServiceEndTime(e.target.value)
-                              }
-                              className="input"
-                            />
-                          </Field>
-                        </div>
-
-                        <Field label="Description">
-                          <input
-                            value={serviceDescription}
-                            onChange={(e) =>
-                              setServiceDescription(e.target.value)
-                            }
-                            placeholder="Optional description"
-                            className="input"
-                          />
-                        </Field>
-                      </div>
-
-                      <div className="mt-4 grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={cancelAddService}
-                          className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 sm:text-sm"
-                        >
-                          Cancel
-                        </button>
-
-                        <button
-                          type="submit"
-                          disabled={savingService}
-                          className="rounded-lg bg-fuchsia-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
-                        >
-                          {savingService ? "Adding..." : "Add service"}
-                        </button>
-                      </div>
-                    </form>
-                  )}
-
-                  {/* Services */}
-                  {activeServices.length === 0 && !addingService ? (
-                    <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center sm:px-5">
-                      <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-fuchsia-100 text-lg font-bold text-fuchsia-600">
-                        +
-                      </div>
-
-                      <h5 className="text-sm font-bold text-slate-800">
-                        No services scheduled
-                      </h5>
-
-                      <p className="mt-1 text-xs leading-5 text-slate-500">
-                        This day does not currently have an active service.
+                ) : currentDay ? (
+                  <>
+                    <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 p-4">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-600">
+                        Day {currentDay.day_number}
                       </p>
 
-                      {isAdmin && (
-                        <button
-                          onClick={openAddService}
-                          className="mt-4 rounded-lg bg-fuchsia-600 px-4 py-2 text-xs font-semibold text-white hover:bg-fuchsia-700 sm:text-sm"
-                        >
-                          Add service
-                        </button>
+                      <h4 className="mt-1 text-lg font-bold text-slate-900">
+                        {currentDay.day_name}
+                      </h4>
+
+                      {currentDay.event_date && (
+                        <p className="mt-1 text-xs text-slate-500">
+                          {currentDay.event_date}
+                        </p>
                       )}
                     </div>
-                  ) : (
-                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
-                      {activeServices.map((service) => (
-                        <div
-                          key={service.id}
-                          className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-fuchsia-200 hover:shadow-md sm:p-4"
-                        >
-                          {editingServiceId === service.id ? (
-                            <form onSubmit={handleUpdateService}>
-                              <div className="mb-3">
-                                <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">
-                                  Edit service
-                                </p>
-                              </div>
 
-                              <div className="space-y-3">
-                                <Field label="Service name" required>
-                                  <input
-                                    value={editName}
-                                    onChange={(e) =>
-                                      setEditName(e.target.value)
-                                    }
-                                    className="input"
-                                  />
-                                </Field>
+                    {currentDayServices.length > 0 && (
+                      <div className="mt-4">
+                        <p className="mb-2 text-xs font-semibold text-slate-600">
+                          Today&apos;s active services
+                        </p>
 
-                                <div className="grid grid-cols-2 gap-2.5">
-                                  <Field label="Start">
-                                    <input
-                                      type="time"
-                                      value={editStartTime}
-                                      onChange={(e) =>
-                                        setEditStartTime(e.target.value)
-                                      }
-                                      className="input"
-                                    />
-                                  </Field>
+                        <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 lg:grid-cols-3">
+                          {currentDayServices.map((service) => (
+                            <div
+                              key={service.id}
+                              className="rounded-xl border border-slate-200 bg-white p-3.5"
+                            >
+                              <div className="flex items-start gap-2">
+                                <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
 
-                                  <Field label="End">
-                                    <input
-                                      type="time"
-                                      value={editEndTime}
-                                      onChange={(e) =>
-                                        setEditEndTime(e.target.value)
-                                      }
-                                      className="input"
-                                    />
-                                  </Field>
-                                </div>
-
-                                <Field label="Description">
-                                  <input
-                                    value={editDescription}
-                                    onChange={(e) =>
-                                      setEditDescription(e.target.value)
-                                    }
-                                    className="input"
-                                  />
-                                </Field>
-                              </div>
-
-                              <div className="mt-3 grid grid-cols-2 gap-2">
-                                <button
-                                  type="button"
-                                  onClick={cancelEditingService}
-                                  className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                                >
-                                  Cancel
-                                </button>
-
-                                <button
-                                  type="submit"
-                                  disabled={updatingService}
-                                  className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
-                                >
-                                  {updatingService ? "Saving..." : "Save"}
-                                </button>
-                              </div>
-                            </form>
-                          ) : (
-                            <>
-                              <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0">
-                                  <div className="flex min-w-0 items-center gap-2">
-                                    <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+                                  <p className="truncate text-sm font-bold text-slate-800">
+                                    {service.name}
+                                  </p>
 
-                                    <h5 className="truncate text-sm font-bold text-slate-800">
-                                      {service.name}
-                                    </h5>
-                                  </div>
-
-                                  {service.description && (
-                                    <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-slate-500">
-                                      {service.description}
+                                  {(service.start_time ||
+                                    service.end_time) && (
+                                    <p className="mt-1 text-[11px] text-slate-500">
+                                      {service.start_time
+                                        ? formatTime(service.start_time)
+                                        : "No start"}{" "}
+                                      –{" "}
+                                      {service.end_time
+                                        ? formatTime(service.end_time)
+                                        : "No end"}
                                     </p>
                                   )}
                                 </div>
-
-                                <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-1 text-[9px] font-bold text-emerald-600">
-                                  Active
-                                </span>
                               </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-slate-500">
+                    The current event day is not available.
+                  </p>
+                )}
+              </div>
+            </div>
+          </section>
+        )}
 
-                              <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
-                                <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
-                                  <span className="text-fuchsia-600">◷</span>
+        {/* Schedule */}
+        {!isEventStaff && (
+          <section className="w-full rounded-xl border border-slate-200 bg-white shadow-sm sm:rounded-2xl">
+            <div className="border-b border-slate-200 px-3.5 py-3.5 sm:px-6 sm:py-4">
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-fuchsia-600 sm:text-xs">
+                    Event schedule
+                  </p>
 
-                                  <span className="truncate">
-                                    {service.start_time
-                                      ? formatTime(service.start_time)
-                                      : "No start"}
-                                  </span>
+                  <h3 className="mt-0.5 text-base font-bold text-slate-900 sm:mt-1 sm:text-lg">
+                    Services
+                  </h3>
+                </div>
 
-                                  <span className="text-slate-300">–</span>
+                {isAdmin && selectedDay && (
+                  <button
+                    onClick={openAddService}
+                    className="shrink-0 rounded-lg bg-fuchsia-600 px-3 py-2 text-xs font-semibold text-white shadow-sm transition hover:bg-fuchsia-700 sm:px-4 sm:py-2.5 sm:text-sm"
+                  >
+                    + Add service
+                  </button>
+                )}
+              </div>
+            </div>
 
-                                  <span className="truncate">
-                                    {service.end_time
-                                      ? formatTime(service.end_time)
-                                      : "No end"}
-                                  </span>
-                                </div>
-                              </div>
+            {loadingSchedule ? (
+              <div className="px-4 py-10 text-center">
+                <div className="mx-auto mb-3 h-8 w-8 animate-spin rounded-full border-4 border-fuchsia-100 border-t-fuchsia-600" />
+                <p className="text-sm text-slate-500">
+                  Loading schedule...
+                </p>
+              </div>
+            ) : scheduleError ? (
+              <div className="m-3 rounded-lg border border-red-200 bg-red-50 px-3 py-3 text-xs text-red-700 sm:m-4 sm:text-sm">
+                {scheduleError}
+              </div>
+            ) : (
+              <>
+                <div className="border-b border-slate-200 bg-slate-50/70 px-3 py-2.5 sm:px-5 sm:py-3">
+                  <div
+                    className="flex gap-1.5 overflow-x-auto pb-1"
+                    style={{
+                      scrollbarWidth: "none",
+                      msOverflowStyle: "none",
+                    }}
+                  >
+                    {eventDays.map((day) => {
+                      const isSelected = selectedDayId === day.id;
+                      const isCurrent = currentEventDay === day.day_number;
 
-                              {isAdmin && (
-                                <div className="mt-3 grid grid-cols-2 gap-2">
-                                  <button
-                                    onClick={() =>
-                                      startEditingService(service)
-                                    }
-                                    className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
-                                  >
-                                    Edit
-                                  </button>
+                      return (
+                        <button
+                          key={day.id}
+                          onClick={() => {
+                            setSelectedDayId(day.id);
+                            setAddingService(false);
+                            cancelEditingService();
+                            setScheduleError("");
+                            setScheduleMessage("");
+                          }}
+                          className={`relative min-w-[68px] shrink-0 rounded-lg border px-3 py-2 text-center transition sm:min-w-[90px] sm:px-4 ${
+                            isSelected
+                              ? "border-fuchsia-600 bg-fuchsia-600 text-white shadow-sm"
+                              : "border-slate-200 bg-white text-slate-600 hover:border-fuchsia-200 hover:bg-fuchsia-50 hover:text-fuchsia-700"
+                          }`}
+                        >
+                          <span className="block text-[10px] font-bold uppercase tracking-wide sm:text-xs">
+                            Day {day.day_number}
+                          </span>
 
-                                  <button
-                                    onClick={() =>
-                                      handleRemoveService(service)
-                                    }
-                                    className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-                                  >
-                                    Remove
-                                  </button>
-                                </div>
-                              )}
-                            </>
+                          {isCurrent && (
+                            <span
+                              className={`mt-1 block text-[8px] font-bold uppercase tracking-wide ${
+                                isSelected
+                                  ? "text-emerald-100"
+                                  : "text-emerald-600"
+                              }`}
+                            >
+                              Live
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {selectedDay && (
+                  <div className="p-3.5 sm:p-6">
+                    <div className="mb-4 flex flex-col gap-3 sm:mb-5 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-md bg-blue-50 px-2 py-1 text-[9px] font-bold uppercase tracking-wide text-blue-700 sm:text-[10px]">
+                            Day {selectedDay.day_number}
+                          </span>
+
+                          {selectedDay.event_date && (
+                            <span className="truncate text-[10px] text-slate-400 sm:text-xs">
+                              {selectedDay.event_date}
+                            </span>
                           )}
                         </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </section>
 
-        {/* Quick actions */}
-        {actions.length > 0 && (
+                        <h4 className="mt-1.5 truncate text-base font-bold text-slate-900 sm:mt-2 sm:text-lg">
+                          {selectedDay.day_name}
+                        </h4>
+                      </div>
+
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-[10px] font-medium text-slate-400 sm:text-xs">
+                          {activeServices.length}{" "}
+                          {activeServices.length === 1
+                            ? "service"
+                            : "services"}
+                        </span>
+
+                        {currentEventDay === selectedDay.day_number ? (
+                          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-emerald-600">
+                            Current check-in day
+                          </span>
+                        ) : (
+                          isAdmin && (
+                            <button
+                              onClick={() =>
+                                handleSetCurrentDay(selectedDay.day_number)
+                              }
+                              disabled={settingCurrentDay}
+                              className="rounded-lg border border-fuchsia-200 bg-fuchsia-50 px-3 py-2 text-[10px] font-bold text-fuchsia-700 transition hover:bg-fuchsia-100 disabled:cursor-not-allowed disabled:opacity-60 sm:text-xs"
+                            >
+                              {settingCurrentDay
+                                ? "Updating..."
+                                : `Set Day ${selectedDay.day_number} for check-in`}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
+
+                    {scheduleMessage && (
+                      <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs font-medium text-emerald-700 sm:px-4 sm:py-3 sm:text-sm">
+                        {scheduleMessage}
+                      </div>
+                    )}
+
+                    {scheduleError && (
+                      <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2.5 text-xs font-medium text-red-700 sm:px-4 sm:py-3 sm:text-sm">
+                        {scheduleError}
+                      </div>
+                    )}
+
+                    {isAdmin && addingService && (
+                      <form
+                        onSubmit={handleCreateService}
+                        className="mb-5 rounded-xl border border-fuchsia-100 bg-fuchsia-50/50 p-3.5 sm:p-5"
+                      >
+                        <div className="mb-4">
+                          <h5 className="text-sm font-bold text-slate-900">
+                            Add service
+                          </h5>
+
+                          <p className="mt-1 text-[11px] leading-5 text-slate-500 sm:text-xs">
+                            Add a service to {selectedDay.day_name}. Multiple
+                            services may run at the same time.
+                          </p>
+                        </div>
+
+                        <div className="space-y-3.5 sm:space-y-4">
+                          <Field label="Service name" required>
+                            <input
+                              value={serviceName}
+                              onChange={(e) => setServiceName(e.target.value)}
+                              placeholder="Morning Service"
+                              className="input"
+                              autoFocus
+                            />
+                          </Field>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <Field label="Start time">
+                              <input
+                                type="time"
+                                value={serviceStartTime}
+                                onChange={(e) =>
+                                  setServiceStartTime(e.target.value)
+                                }
+                                className="input"
+                              />
+                            </Field>
+
+                            <Field label="End time">
+                              <input
+                                type="time"
+                                value={serviceEndTime}
+                                onChange={(e) =>
+                                  setServiceEndTime(e.target.value)
+                                }
+                                className="input"
+                              />
+                            </Field>
+                          </div>
+
+                          <Field label="Description">
+                            <input
+                              value={serviceDescription}
+                              onChange={(e) =>
+                                setServiceDescription(e.target.value)
+                              }
+                              placeholder="Optional description"
+                              className="input"
+                            />
+                          </Field>
+                        </div>
+
+                        <div className="mt-4 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={cancelAddService}
+                            className="rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 sm:text-sm"
+                          >
+                            Cancel
+                          </button>
+
+                          <button
+                            type="submit"
+                            disabled={savingService}
+                            className="rounded-lg bg-fuchsia-600 px-3 py-2.5 text-xs font-semibold text-white hover:bg-fuchsia-700 disabled:cursor-not-allowed disabled:opacity-60 sm:text-sm"
+                          >
+                            {savingService ? "Adding..." : "Add service"}
+                          </button>
+                        </div>
+                      </form>
+                    )}
+
+                    {activeServices.length === 0 && !addingService ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-8 text-center sm:px-5">
+                        <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-fuchsia-100 text-lg font-bold text-fuchsia-600">
+                          +
+                        </div>
+
+                        <h5 className="text-sm font-bold text-slate-800">
+                          No services scheduled
+                        </h5>
+
+                        <p className="mt-1 text-xs leading-5 text-slate-500">
+                          This day does not currently have an active service.
+                        </p>
+
+                        {isAdmin && (
+                          <button
+                            onClick={openAddService}
+                            className="mt-4 rounded-lg bg-fuchsia-600 px-4 py-2 text-xs font-semibold text-white hover:bg-fuchsia-700 sm:text-sm"
+                          >
+                            Add service
+                          </button>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3">
+                        {activeServices.map((service) => (
+                          <div
+                            key={service.id}
+                            className="min-w-0 rounded-xl border border-slate-200 bg-white p-3.5 shadow-sm transition hover:border-fuchsia-200 hover:shadow-md sm:p-4"
+                          >
+                            {editingServiceId === service.id ? (
+                              <form onSubmit={handleUpdateService}>
+                                <div className="mb-3">
+                                  <p className="text-[10px] font-semibold uppercase tracking-wide text-blue-600">
+                                    Edit service
+                                  </p>
+                                </div>
+
+                                <div className="space-y-3">
+                                  <Field label="Service name" required>
+                                    <input
+                                      value={editName}
+                                      onChange={(e) =>
+                                        setEditName(e.target.value)
+                                      }
+                                      className="input"
+                                    />
+                                  </Field>
+
+                                  <div className="grid grid-cols-2 gap-2.5">
+                                    <Field label="Start">
+                                      <input
+                                        type="time"
+                                        value={editStartTime}
+                                        onChange={(e) =>
+                                          setEditStartTime(e.target.value)
+                                        }
+                                        className="input"
+                                      />
+                                    </Field>
+
+                                    <Field label="End">
+                                      <input
+                                        type="time"
+                                        value={editEndTime}
+                                        onChange={(e) =>
+                                          setEditEndTime(e.target.value)
+                                        }
+                                        className="input"
+                                      />
+                                    </Field>
+                                  </div>
+
+                                  <Field label="Description">
+                                    <input
+                                      value={editDescription}
+                                      onChange={(e) =>
+                                        setEditDescription(e.target.value)
+                                      }
+                                      className="input"
+                                    />
+                                  </Field>
+                                </div>
+
+                                <div className="mt-3 grid grid-cols-2 gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={cancelEditingService}
+                                    className="rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                  >
+                                    Cancel
+                                  </button>
+
+                                  <button
+                                    type="submit"
+                                    disabled={updatingService}
+                                    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-700 disabled:opacity-60"
+                                  >
+                                    {updatingService ? "Saving..." : "Save"}
+                                  </button>
+                                </div>
+                              </form>
+                            ) : (
+                              <>
+                                <div className="flex items-start justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="flex min-w-0 items-center gap-2">
+                                      <span className="h-2 w-2 shrink-0 rounded-full bg-emerald-500" />
+
+                                      <h5 className="truncate text-sm font-bold text-slate-800">
+                                        {service.name}
+                                      </h5>
+                                    </div>
+
+                                    {service.description && (
+                                      <p className="mt-1.5 line-clamp-2 text-[11px] leading-4 text-slate-500">
+                                        {service.description}
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  <span className="shrink-0 rounded-full bg-emerald-50 px-1.5 py-1 text-[9px] font-bold text-emerald-600">
+                                    Active
+                                  </span>
+                                </div>
+
+                                <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                                  <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+                                    <span className="text-fuchsia-600">◷</span>
+
+                                    <span className="truncate">
+                                      {service.start_time
+                                        ? formatTime(service.start_time)
+                                        : "No start"}
+                                    </span>
+
+                                    <span className="text-slate-300">–</span>
+
+                                    <span className="truncate">
+                                      {service.end_time
+                                        ? formatTime(service.end_time)
+                                        : "No end"}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {isAdmin && (
+                                  <div className="mt-3 grid grid-cols-2 gap-2">
+                                    <button
+                                      onClick={() =>
+                                        startEditingService(service)
+                                      }
+                                      className="rounded-lg border border-blue-200 px-3 py-2 text-xs font-semibold text-blue-700 transition hover:bg-blue-50"
+                                    >
+                                      Edit
+                                    </button>
+
+                                    <button
+                                      onClick={() =>
+                                        handleRemoveService(service)
+                                      }
+                                      className="rounded-lg border border-red-200 px-3 py-2 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+                                    >
+                                      Remove
+                                    </button>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+        )}
+
+        {/* Admin / non-event-staff quick actions */}
+        {!isEventStaff && actions.length > 0 && (
           <section className="mt-6 sm:mt-7">
             <div className="mb-3">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-fuchsia-600 sm:text-xs">
@@ -1234,3 +1378,4 @@ function getActionIconClass(accent: string) {
       return "bg-fuchsia-50 text-fuchsia-600";
   }
 }
+

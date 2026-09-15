@@ -1,3 +1,4 @@
+
 "use client";
 
 import {
@@ -56,6 +57,11 @@ type ReportAttendee = {
   day_6: string | null;
   days_attended: number;
   attendance_percentage: number;
+
+  // Service-based individual attendance
+  services_attended: number;
+  total_services: number;
+  service_attendance_percentage: number;
 };
 
 type AttendanceRecord = {
@@ -372,7 +378,9 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
     100,
     Math.max(
       0,
-      Number(attendee.attendance_percentage || 0)
+      Number(
+        attendee.service_attendance_percentage || 0
+      )
     )
   );
 
@@ -456,8 +464,14 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
               </span>
 
               <span className="text-[10px] font-bold text-slate-500">
-                {Number(attendee.days_attended || 0)}
-                /{EVENT_DAY_COUNT} days
+                {Number(
+                  attendee.services_attended || 0
+                )}
+                /
+                {Number(
+                  attendee.total_services || 0
+                )}{" "}
+                services
               </span>
             </div>
           </div>
@@ -577,9 +591,13 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
 
                 <div className="mt-1 text-[10px] font-medium text-slate-400">
                   {Number(
-                    attendee.days_attended || 0
+                    attendee.services_attended || 0
                   )}{" "}
-                  of {EVENT_DAY_COUNT} days attended
+                  of{" "}
+                  {Number(
+                    attendee.total_services || 0
+                  )}{" "}
+                  services attended
                 </div>
               </div>
 
@@ -588,6 +606,7 @@ const MobileAttendeeCard = memo(function MobileAttendeeCard({
               </div>
             </div>
 
+            {/* Day-by-day list remains unchanged */}
             <div className="space-y-1.5">
               {Array.from(
                 { length: EVENT_DAY_COUNT },
@@ -677,7 +696,9 @@ const DesktopRow = memo(function DesktopRow({
     100,
     Math.max(
       0,
-      Number(attendee.attendance_percentage || 0)
+      Number(
+        attendee.service_attendance_percentage || 0
+      )
     )
   );
 
@@ -741,8 +762,13 @@ const DesktopRow = memo(function DesktopRow({
 
       <td className="border-b border-slate-100 px-4 py-3.5 text-center align-middle">
         <span className="inline-flex min-w-[52px] items-center justify-center rounded-full bg-fuchsia-50 px-2.5 py-1 text-xs font-black text-fuchsia-700">
-          {Number(attendee.days_attended || 0)}
-          /{EVENT_DAY_COUNT}
+          {Number(
+            attendee.services_attended || 0
+          )}
+          /
+          {Number(
+            attendee.total_services || 0
+          )}
         </span>
       </td>
 
@@ -926,6 +952,7 @@ export default function ReportsPage() {
       const [
         reportResult,
         countResult,
+        serviceAttendanceResult,
       ] = await Promise.all([
         supabase.rpc(
           "get_attendance_report_page",
@@ -942,6 +969,10 @@ export default function ReportsPage() {
             p_membership_status:
               params.p_membership_status,
           }
+        ),
+
+        supabase.rpc(
+          "get_attendee_service_attendance_report"
         ),
       ]);
 
@@ -969,9 +1000,78 @@ export default function ReportsPage() {
         return;
       }
 
-      const rows =
+      if (serviceAttendanceResult.error) {
+        console.error(
+          "get_attendee_service_attendance_report:",
+          serviceAttendanceResult.error
+        );
+
+        setError(
+          serviceAttendanceResult.error.message
+        );
+        setLoading(false);
+        setLoadingMore(false);
+        return;
+      }
+
+      const reportRows =
         (reportResult.data ||
           []) as ReportAttendee[];
+
+      const serviceRows =
+        (serviceAttendanceResult.data ||
+          []) as Array<{
+          attendee_id: string;
+          services_attended: number;
+          total_services: number;
+          service_attendance_percentage: number;
+        }>;
+
+      const serviceMap = new Map(
+        serviceRows.map((row) => [
+          row.attendee_id,
+          row,
+        ])
+      );
+
+      const rows = reportRows.map(
+        (attendee) => {
+          const serviceAttendance =
+            serviceMap.get(
+              attendee.attendee_id
+            );
+
+          return {
+            ...attendee,
+
+            services_attended:
+              Number(
+                serviceAttendance
+                  ?.services_attended ?? 0
+              ),
+
+            total_services:
+              Number(
+                serviceAttendance
+                  ?.total_services ?? 0
+              ),
+
+            service_attendance_percentage:
+              Number(
+                serviceAttendance
+                  ?.service_attendance_percentage ??
+                  0
+              ),
+
+            attendance_percentage:
+              Number(
+                serviceAttendance
+                  ?.service_attendance_percentage ??
+                  0
+              ),
+          };
+        }
+      );
 
       const count = Number(
         countResult.data || 0
@@ -2331,7 +2431,7 @@ export default function ReportsPage() {
                         )}
 
                         <th className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-wide text-slate-500">
-                          Days
+                          Services
                         </th>
 
                         <th className="border-b border-slate-200 bg-slate-50 px-4 py-3 text-center text-[10px] font-black uppercase tracking-wide text-slate-500">
@@ -2474,60 +2574,143 @@ export default function ReportsPage() {
                       <>
                         {/* Personal details */}
                         <section>
-                      <div className="mb-4">
-                        <p className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-600">
-                          Personal details
-                        </p>
+                          <div className="mb-4">
+                            <p className="text-[10px] font-black uppercase tracking-[0.14em] text-fuchsia-600">
+                              Personal details
+                            </p>
 
-                        <p className="mt-1 text-xs text-slate-500">
-                          Update the attendee&apos;s
-                          registration information.
-                        </p>
-                      </div>
+                            <p className="mt-1 text-xs text-slate-500">
+                              Update the attendee&apos;s
+                              registration information.
+                            </p>
+                          </div>
 
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        {[
-                          [
-                            "full_name",
-                            "Full name",
-                            "Enter full name",
-                          ],
-                          [
-                            "phone",
-                            "Phone",
-                            "Phone number",
-                          ],
-                          [
-                            "church",
-                            "Church",
-                            "Church name",
-                          ],
-                          [
-                            "location",
-                            "Location",
-                            "Location",
-                          ],
-                        ].map(
-                          ([
-                            key,
-                            label,
-                            placeholder,
-                          ]) => (
-                            <div key={key}>
+                          <div className="grid gap-4 sm:grid-cols-2">
+                            {[
+                              [
+                                "full_name",
+                                "Full name",
+                                "Enter full name",
+                              ],
+                              [
+                                "phone",
+                                "Phone",
+                                "Phone number",
+                              ],
+                              [
+                                "church",
+                                "Church",
+                                "Church name",
+                              ],
+                              [
+                                "location",
+                                "Location",
+                                "Location",
+                              ],
+                            ].map(
+                              ([
+                                key,
+                                label,
+                                placeholder,
+                              ]) => (
+                                <div key={key}>
+                                  <label
+                                    className={
+                                      labelClass
+                                    }
+                                  >
+                                    {label}
+                                  </label>
+
+                                  <input
+                                    type="text"
+                                    value={
+                                      editForm[
+                                        key as keyof typeof editForm
+                                      ]
+                                    }
+                                    onChange={(
+                                      event
+                                    ) =>
+                                      setEditForm(
+                                        (
+                                          current
+                                        ) => ({
+                                          ...current,
+                                          [key]:
+                                            event
+                                              .target
+                                              .value,
+                                        })
+                                      )
+                                    }
+                                    placeholder={
+                                      placeholder
+                                    }
+                                    className={
+                                      inputClass
+                                    }
+                                  />
+                                </div>
+                              )
+                            )}
+
+                            <div>
                               <label
                                 className={
                                   labelClass
                                 }
                               >
-                                {label}
+                                Gender
                               </label>
 
-                              <input
-                                type="text"
+                              <select
                                 value={
-                                  editForm[
-                                    key as keyof typeof editForm
-                                  ]
+                                  editForm.gender
+                                }
+                                onChange={(event) =>
+                                  setEditForm(
+                                    (
+                                      current
+                                    ) => ({
+                                      ...current,
+                                      gender:
+                                        event
+                                          .target
+                                          .value,
+                                    })
+                                  )
+                                }
+                                className={
+                                  inputClass
+                                }
+                              >
+                                <option value="">
+                                  Not set
+                                </option>
+
+                                <option value="male">
+                                  Male
+                                </option>
+
+                                <option value="female">
+                                  Female
+                                </option>
+                              </select>
+                            </div>
+
+                            <div>
+                              <label
+                                className={
+                                  labelClass
+                                }
+                              >
+                                Member or Visitor
+                              </label>
+
+                              <select
+                                value={
+                                  editForm.membership_status
                                 }
                                 onChange={(
                                   event
@@ -2537,230 +2720,147 @@ export default function ReportsPage() {
                                       current
                                     ) => ({
                                       ...current,
-                                      [key]:
+                                      membership_status:
                                         event
                                           .target
                                           .value,
                                     })
                                   )
                                 }
-                                placeholder={
-                                  placeholder
-                                }
                                 className={
                                   inputClass
                                 }
-                              />
-                            </div>
-                          )
-                        )}
-
-                        <div>
-                          <label
-                            className={
-                              labelClass
-                            }
-                          >
-                            Gender
-                          </label>
-
-                          <select
-                            value={
-                              editForm.gender
-                            }
-                            onChange={(event) =>
-                              setEditForm(
-                                (
-                                  current
-                                ) => ({
-                                  ...current,
-                                  gender:
-                                    event
-                                      .target
-                                      .value,
-                                })
-                              )
-                            }
-                            className={
-                              inputClass
-                            }
-                          >
-                            <option value="">
-                              Not set
-                            </option>
-
-                            <option value="male">
-                              Male
-                            </option>
-
-                            <option value="female">
-                              Female
-                            </option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label
-                            className={
-                              labelClass
-                            }
-                          >
-                            Member or Visitor
-                          </label>
-
-                          <select
-                            value={
-                              editForm.membership_status
-                            }
-                            onChange={(
-                              event
-                            ) =>
-                              setEditForm(
-                                (
-                                  current
-                                ) => ({
-                                  ...current,
-                                  membership_status:
-                                    event
-                                      .target
-                                      .value,
-                                })
-                              )
-                            }
-                            className={
-                              inputClass
-                            }
-                          >
-                            <option value="">
-                              Not set
-                            </option>
-
-                            <option value="member">
-                              Member
-                            </option>
-
-                            <option value="visitor">
-                              Visitor
-                            </option>
-                          </select>
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={
-                          saveAttendee
-                        }
-                        disabled={
-                          savingEdit
-                        }
-                        className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-700 via-purple-700 to-blue-700 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
-                      >
-                        {savingEdit ? (
-                          <RefreshCw className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Check className="h-4 w-4" />
-                        )}
-
-                        {savingEdit
-                          ? "Saving changes..."
-                          : "Save changes"}
-                      </button>
-                      </section>
-
-                      {/* Attendance records */}
-                      <section className="border-t border-slate-100 pt-6">
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600">
-                            Attendance records
-                          </p>
-
-                          <p className="mt-1 text-xs text-slate-500">
-                            Remove an accidental
-                            check-in without
-                            deleting the attendee.
-                          </p>
-                        </div>
-
-                        <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
-                          {
-                            attendanceRecords.length
-                          }{" "}
-                          record
-                          {attendanceRecords.length ===
-                          1
-                            ? ""
-                            : "s"}
-                        </span>
-                      </div>
-
-                      <div className="mt-4 space-y-2">
-                        {attendanceRecords.length ===
-                        0 ? (
-                          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-medium text-slate-400">
-                            No attendance
-                            records.
-                          </div>
-                        ) : (
-                          attendanceRecords.map(
-                            (record) => (
-                              <div
-                                key={
-                                  record.attendance_id
-                                }
-                                className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3"
                               >
-                                <div className="min-w-0">
-                                  <p className="text-xs font-black text-slate-800">
-                                    Day{" "}
-                                    {
-                                      record.event_day
-                                    }{" "}
-                                    ·{" "}
-                                    {
-                                      record.service_name
-                                    }
-                                    {formatServiceTime(
-                                      record
-                                    )}
-                                  </p>
+                                <option value="">
+                                  Not set
+                                </option>
 
-                                  <p className="mt-1 text-[10px] font-medium text-slate-400">
-                                    Checked in{" "}
-                                    {formatAttendanceDate(
-                                      record.attended_at
-                                    )}
-                                  </p>
-                                </div>
+                                <option value="member">
+                                  Member
+                                </option>
 
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    deleteAttendance(
-                                      record.attendance_id
-                                    )
-                                  }
-                                  disabled={
-                                    deletingAttendanceId ===
-                                    record.attendance_id
-                                  }
-                                  className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 text-[10px] font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
-                                >
-                                  {deletingAttendanceId ===
-                                  record.attendance_id ? (
-                                    <RefreshCw className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-3 w-3" />
-                                  )}
+                                <option value="visitor">
+                                  Visitor
+                                </option>
+                              </select>
+                            </div>
+                          </div>
 
-                                  Remove
-                                </button>
+                          <button
+                            type="button"
+                            onClick={
+                              saveAttendee
+                            }
+                            disabled={
+                              savingEdit
+                            }
+                            className="mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-700 via-purple-700 to-blue-700 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:opacity-95 disabled:opacity-50"
+                          >
+                            {savingEdit ? (
+                              <RefreshCw className="h-4 w-4 animate-spin" />
+                            ) : (
+                              <Check className="h-4 w-4" />
+                            )}
+
+                            {savingEdit
+                              ? "Saving changes..."
+                              : "Save changes"}
+                          </button>
+                        </section>
+
+                        {/* Attendance records */}
+                        <section className="border-t border-slate-100 pt-6">
+                          <div className="flex items-end justify-between gap-3">
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-blue-600">
+                                Attendance records
+                              </p>
+
+                              <p className="mt-1 text-xs text-slate-500">
+                                Remove an accidental
+                                check-in without
+                                deleting the attendee.
+                              </p>
+                            </div>
+
+                            <span className="shrink-0 rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-black text-blue-700">
+                              {
+                                attendanceRecords.length
+                              }{" "}
+                              record
+                              {attendanceRecords.length ===
+                              1
+                                ? ""
+                                : "s"}
+                            </span>
+                          </div>
+
+                          <div className="mt-4 space-y-2">
+                            {attendanceRecords.length ===
+                            0 ? (
+                              <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50 p-4 text-center text-xs font-medium text-slate-400">
+                                No attendance
+                                records.
                               </div>
-                            )
-                          )
-                        )}
-                      </div>
+                            ) : (
+                              attendanceRecords.map(
+                                (record) => (
+                                  <div
+                                    key={
+                                      record.attendance_id
+                                    }
+                                    className="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50 p-3"
+                                  >
+                                    <div className="min-w-0">
+                                      <p className="text-xs font-black text-slate-800">
+                                        Day{" "}
+                                        {
+                                          record.event_day
+                                        }{" "}
+                                        ·{" "}
+                                        {
+                                          record.service_name
+                                        }
+                                        {formatServiceTime(
+                                          record
+                                        )}
+                                      </p>
+
+                                      <p className="mt-1 text-[10px] font-medium text-slate-400">
+                                        Checked in{" "}
+                                        {formatAttendanceDate(
+                                          record.attended_at
+                                        )}
+                                      </p>
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        deleteAttendance(
+                                          record.attendance_id
+                                        )
+                                      }
+                                      disabled={
+                                        deletingAttendanceId ===
+                                        record.attendance_id
+                                      }
+                                      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-2.5 text-[10px] font-black text-red-700 transition hover:bg-red-50 disabled:opacity-50"
+                                    >
+                                      {deletingAttendanceId ===
+                                      record.attendance_id ? (
+                                        <RefreshCw className="h-3 w-3 animate-spin" />
+                                      ) : (
+                                        <Trash2 className="h-3 w-3" />
+                                      )}
+
+                                      Remove
+                                    </button>
+                                  </div>
+                                )
+                              )
+                            )}
+                          </div>
                         </section>
                       </>
                     )}
@@ -2875,3 +2975,4 @@ export default function ReportsPage() {
     </AuthGuard>
   );
 }
+
